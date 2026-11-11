@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="my">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#1e293b">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Document Designer Pro</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="style.css">
+
+  <!-- Offline-capable external libraries via CDN (Service Worker will cache these) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
+</head>
+<body>
+  <!-- Top Header Bar -->
+  <header class="app-header">
+    <div class="header-left">
+      <span class="logo-text">📄 Doc Designer <span class="badge-pro">PRO</span></span>
+    </div>
+    <div class="header-actions">
+      <button id="btnUndo" class="icon-btn" title="Undo">↩</button>
+      <button id="btnRedo" class="icon-btn" title="Redo">↪</button>
+      <button id="btnLock" class="icon-btn" title="Lock/Unlock Object">🔓</button>
+      <button id="btnLayerUp" class="icon-btn" title="Bring Forward">🔼</button>
+      <button id="btnLayerDown" class="icon-btn" title="Send Backward">🔽</button>
+      <button id="btnPageSetup" class="icon-btn" title="Page Setup">⚙️ Setup</button>
+      <button id="btnSaveProject" class="btn btn-secondary">💾 Save</button>
+      <button id="btnOpenProject" class="btn btn-secondary">📂 Open</button>
+      <button id="btnExport" class="btn btn-primary">📤 Export</button>
+      <input type="file" id="projectFileInput" accept=".ddpro,.json" style="display:none">
+    </div>
+  </header>
+
+  <!-- Page Setup Modal -->
+  <div id="pageSetupModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Page Setup</h3>
+        <button class="close-btn" onclick="document.getElementById('pageSetupModal').style.display='none'">✕</button>
+      </div>
+      <div class="form-group">
+        <label>Paper Size:</label>
+        <select id="selPaperSize">
+          <option value="A4">A4 (210 × 297 mm)</option>
+          <option value="Legal">Legal (8.5 × 14.0 in)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Orientation:</label>
+        <select id="selOrientation">
+          <option value="portrait">Portrait</option>
+          <option value="landscape">Landscape</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Margins (Inches):</label>
+        <div class="grid-2x2">
+          <div><label>Top:</label><input type="number" id="marginTop" value="0.75" step="0.1" min="0"></div>
+          <div><label>Bottom:</label><input type="number" id="marginBottom" value="0.75" step="0.1" min="0"></div>
+          <div><label>Left:</label><input type="number" id="marginLeft" value="0.75" step="0.1" min="0"></div>
+          <div><label>Right:</label><input type="number" id="marginRight" value="0.75" step="0.1" min="0"></div>
+        </div>
+      </div>
+      <button class="btn btn-primary full-width" id="btnApplyPageSetup">Apply Setup</button>
+    </div>
+  </div>
+
+  <!-- Export & Share Modal -->
+  <div id="exportModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Export & Share Document</h3>
+        <button class="close-btn" onclick="document.getElementById('exportModal').style.display='none'">✕</button>
+      </div>
+      <div class="export-options">
+        <button class="btn btn-secondary full-width mb-2" id="btnExportPDF">📄 Export as PDF</button>
+        <button class="btn btn-secondary full-width mb-2" id="btnExportPNG">🖼️ Export as PNG Image</button>
+        <button class="btn btn-secondary full-width mb-2" id="btnExportJPEG">🖼️ Export as JPEG Image</button>
+        <button class="btn btn-primary full-width" id="btnSystemShare">🔗 Share to Viber / Other Apps</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Workspace -->
+  <main class="workspace-container">
+    <!-- Horizontal Ruler (inches) -->
+    <div class="ruler-container" id="rulerWrapper">
+      <div class="ruler" id="ruler">
+        <div class="ruler-marker-left" id="rulerLeftIndent" title="Left Indent"></div>
+        <div class="ruler-marker-first" id="rulerFirstLineIndent" title="First Line Indent"></div>
+        <div class="ruler-marker-right" id="rulerRightIndent" title="Right Indent"></div>
+      </div>
+    </div>
+
+    <!-- Scrollable Document Viewport -->
+    <div class="viewport" id="viewport">
+      <div class="paper-page a4 portrait" id="paperPage">
+        <div class="margin-overlay" id="marginOverlay"></div>
+        
+        <!-- Canvas/Layers Container -->
+        <div class="layers-container" id="layersContainer">
+          <!-- Text Layer (When in Text / Word mode) -->
+          <div id="textEditorRoot" class="text-editor-root" contenteditable="true" spellcheck="false" style="display:none;"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Secondary Context Toolbar (Changes per active Menu) -->
+  <section class="context-toolbar" id="contextToolbar">
+    <!-- Injected dynamically based on active menu -->
+  </section>
+
+  <!-- Bottom Navigation: 7 Main Menus -->
+  <nav class="bottom-nav">
+    <button class="nav-item active" data-menu="background">
+      <span class="nav-icon">🖼️</span>
+      <span class="nav-label">Background</span>
+    </button>
+    <button class="nav-item" data-menu="docimage">
+      <span class="nav-icon">📄</span>
+      <span class="nav-label">Doc Image</span>
+    </button>
+    <button class="nav-item" data-menu="signature">
+      <span class="nav-icon">✍️</span>
+      <span class="nav-label">Signature</span>
+    </button>
+    <button class="nav-item" data-menu="word">
+      <span class="nav-icon">📘</span>
+      <span class="nav-label">Word File</span>
+    </button>
+    <button class="nav-item" data-menu="texteditor">
+      <span class="nav-icon">✏️</span>
+      <span class="nav-label">စာရိုက်ရန်</span>
+    </button>
+    <button class="nav-item" data-menu="pdf">
+      <span class="nav-icon">📕</span>
+      <span class="nav-label">PDF File</span>
+    </button>
+    <button class="nav-item" data-menu="cleaner">
+      <span class="nav-icon">✨</span>
+      <span class="nav-label">စာရွက်သန့်စင်</span>
+    </button>
+  </nav>
+
+  <script src="app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch(console.error);
+      });
+    }
+  </script>
+</body>
+</html>
